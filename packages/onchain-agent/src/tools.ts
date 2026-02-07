@@ -1,6 +1,6 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
-import type { GameAdapter } from "./types.js";
+import type { GameAdapter, RuntimeConfigManager } from "./types.js";
 
 const observeSchema = Type.Object({
 	filter: Type.Optional(Type.String({ description: "Optional filter for entities" })),
@@ -94,4 +94,52 @@ export function createSimulateActionTool(adapter: GameAdapter<any>): AgentTool<t
  */
 export function createGameTools(adapter: GameAdapter<any>): AgentTool<any>[] {
 	return [createObserveGameTool(adapter), createExecuteActionTool(adapter), createSimulateActionTool(adapter)];
+}
+
+const setAgentConfigSchema = Type.Object({
+	changes: Type.Array(
+		Type.Object({
+			path: Type.String({ description: "Dot-path key to update (example: tickIntervalMs or world.rpcUrl)" }),
+			value: Type.Unknown({ description: "New value to set for the path" }),
+		}),
+		{ minItems: 1 },
+	),
+	reason: Type.Optional(Type.String({ description: "Optional short reason for this configuration change" })),
+});
+
+export function createGetAgentConfigTool(runtimeConfigManager: RuntimeConfigManager): AgentTool<any> {
+	return {
+		name: "get_agent_config",
+		label: "Get Agent Config",
+		description: "Read the agent's live runtime configuration.",
+		parameters: Type.Object({}),
+		async execute() {
+			const config = runtimeConfigManager.getConfig();
+			return {
+				content: [{ type: "text", text: JSON.stringify(config, null, 2) }],
+				details: { keys: Object.keys(config).length },
+			};
+		},
+	};
+}
+
+export function createSetAgentConfigTool(runtimeConfigManager: RuntimeConfigManager): AgentTool<any> {
+	return {
+		name: "set_agent_config",
+		label: "Set Agent Config",
+		description:
+			"Apply one or more live configuration changes to the running agent. This can update tick rate, model, and world connectivity config.",
+		parameters: setAgentConfigSchema,
+		async execute(_toolCallId, { changes, reason }) {
+			const result = await runtimeConfigManager.applyChanges(changes, reason);
+			return {
+				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+				details: { ok: result.ok, changed: result.results.filter((r) => r.applied).length },
+			};
+		},
+	};
+}
+
+export function createAgentConfigTools(runtimeConfigManager: RuntimeConfigManager): AgentTool<any>[] {
+	return [createGetAgentConfigTool(runtimeConfigManager), createSetAgentConfigTool(runtimeConfigManager)];
 }

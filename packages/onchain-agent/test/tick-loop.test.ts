@@ -24,6 +24,7 @@ describe("Tick Loop", () => {
 			expect(loop).toHaveProperty("tickCount");
 			expect(typeof loop.start).toBe("function");
 			expect(typeof loop.stop).toBe("function");
+			expect(typeof loop.setIntervalMs).toBe("function");
 			expect(typeof loop.isRunning).toBe("boolean");
 			expect(typeof loop.tickCount).toBe("number");
 		});
@@ -232,6 +233,37 @@ describe("Tick Loop", () => {
 
 			loop.stop();
 		});
+
+		it("should allow interval changes while running", async () => {
+			const onTick = vi.fn().mockResolvedValue(undefined);
+			const loop = createTickLoop({
+				intervalMs: 100,
+				onTick,
+			});
+
+			loop.start();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(onTick).toHaveBeenCalledTimes(1);
+
+			loop.setIntervalMs(20);
+			await vi.advanceTimersByTimeAsync(20);
+			expect(onTick).toHaveBeenCalledTimes(2);
+			await vi.advanceTimersByTimeAsync(20);
+			expect(onTick).toHaveBeenCalledTimes(3);
+
+			loop.stop();
+		});
+
+		it("should reject non-positive interval updates", () => {
+			const loop = createTickLoop({
+				intervalMs: 100,
+				onTick: async () => {},
+			});
+
+			expect(() => loop.setIntervalMs(0)).toThrow("intervalMs");
+			expect(() => loop.setIntervalMs(-1)).toThrow("intervalMs");
+			expect(() => loop.setIntervalMs(Number.NaN)).toThrow("intervalMs");
+		});
 	});
 
 	describe("formatTickPrompt", () => {
@@ -298,6 +330,8 @@ describe("Tick Loop", () => {
 			const result = formatTickPrompt(state);
 			expect(result).toContain("observe_game");
 			expect(result).toContain("execute_action");
+			expect(result).toContain("set_agent_config");
+			expect(result).toContain("HEARTBEAT.md");
 			expect(result).toContain("reasoning");
 		});
 	});
