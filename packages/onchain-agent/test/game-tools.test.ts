@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	createAgentConfigTools,
 	createExecuteActionTool,
 	createGameTools,
 	createObserveGameTool,
 	createSimulateActionTool,
 } from "../src/tools.js";
-import type { GameAdapter } from "../src/types.js";
+import type { GameAdapter, RuntimeConfigManager } from "../src/types.js";
 
 function createMockAdapter(): GameAdapter {
 	return {
@@ -205,6 +206,44 @@ describe("Game Tools", () => {
 			expect(tools[0].name).toBe("observe_game");
 			expect(tools[1].name).toBe("execute_action");
 			expect(tools[2].name).toBe("simulate_action");
+		});
+	});
+
+	describe("createAgentConfigTools", () => {
+		it("should return get and set tools", () => {
+			const manager: RuntimeConfigManager = {
+				getConfig: () => ({ tickIntervalMs: 1000 }),
+				applyChanges: async () => ({
+					ok: true,
+					results: [],
+					currentConfig: { tickIntervalMs: 1000 },
+				}),
+			};
+			const tools = createAgentConfigTools(manager);
+			expect(tools).toHaveLength(2);
+			expect(tools[0].name).toBe("get_agent_config");
+			expect(tools[1].name).toBe("set_agent_config");
+		});
+
+		it("should apply config changes via manager", async () => {
+			const applyChanges = vi.fn(async () => ({
+				ok: true,
+				results: [{ path: "tickIntervalMs", applied: true, message: "updated" }],
+				currentConfig: { tickIntervalMs: 2000 },
+			}));
+			const manager: RuntimeConfigManager = {
+				getConfig: () => ({ tickIntervalMs: 1000 }),
+				applyChanges,
+			};
+			const [_, setTool] = createAgentConfigTools(manager);
+			const result = await setTool.execute("cfg-1", {
+				changes: [{ path: "tickIntervalMs", value: 2000 }],
+				reason: "faster loop",
+			});
+			expect(applyChanges).toHaveBeenCalledWith([{ path: "tickIntervalMs", value: 2000 }], "faster loop");
+			const parsed = JSON.parse((result.content[0] as { type: "text"; text: string }).text);
+			expect(parsed.ok).toBe(true);
+			expect(parsed.currentConfig.tickIntervalMs).toBe(2000);
 		});
 	});
 });

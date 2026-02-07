@@ -21,6 +21,7 @@
 		"@mariozechner/pi-agent-core": "^0.51.6",
 		"@mariozechner/pi-ai": "^0.51.6",
 		"@mariozechner/pi-coding-agent": "^0.51.6",
+		"@sinclair/typebox": "^0.34.41",
 		"yaml": "^2.3.0"
 	},
 	"keywords": [

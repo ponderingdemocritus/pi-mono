@@ -1,8 +1,9 @@
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGameAgent } from "../src/game-agent.js";
+import type { RuntimeConfigManager } from "../src/types.js";
 import { MockGameAdapter } from "./utils/mock-adapter.js";
 
 function makeTempDir(): string {
@@ -34,7 +35,7 @@ describe("Game Agent Factory", () => {
 	});
 
 	describe("createGameAgent return shape", () => {
-		it("should return { agent, tools, ticker, recorder, dispose }", () => {
+		it("should return { agent, tools, ticker, recorder, enqueuePrompt, dispose }", () => {
 			const result = createGameAgent({
 				adapter,
 				dataDir,
@@ -44,7 +45,9 @@ describe("Game Agent Factory", () => {
 			expect(result).toHaveProperty("tools");
 			expect(result).toHaveProperty("ticker");
 			expect(result).toHaveProperty("recorder");
+			expect(result).toHaveProperty("enqueuePrompt");
 			expect(result).toHaveProperty("dispose");
+			expect(typeof result.enqueuePrompt).toBe("function");
 			expect(typeof result.dispose).toBe("function");
 		});
 	});
@@ -56,12 +59,14 @@ describe("Game Agent Factory", () => {
 				dataDir,
 			});
 
-			expect(result.tools).toHaveLength(3);
+			expect(result.tools).toHaveLength(5);
 
 			const toolNames = result.tools.map((t) => t.name);
 			expect(toolNames).toContain("observe_game");
 			expect(toolNames).toContain("execute_action");
 			expect(toolNames).toContain("simulate_action");
+			expect(toolNames).toContain("read");
+			expect(toolNames).toContain("write");
 		});
 
 		it("should provide tools that are wired to the adapter", async () => {
@@ -159,9 +164,9 @@ describe("Game Agent Factory", () => {
 			});
 
 			const agentTools = result.agent.state.tools;
-			expect(agentTools).toHaveLength(3);
+			expect(agentTools).toHaveLength(5);
 			expect(agentTools.map((t) => t.name)).toEqual(
-				expect.arrayContaining(["observe_game", "execute_action", "simulate_action"]),
+				expect.arrayContaining(["observe_game", "execute_action", "simulate_action", "read", "write"]),
 			);
 		});
 
@@ -284,6 +289,47 @@ describe("Game Agent Factory", () => {
 			expect(result.ticker).toBeDefined();
 		});
 
+		describe("enqueuePrompt", () => {
+			it("should forward prompts to the underlying agent", async () => {
+				const result = createGameAgent({
+					adapter,
+					dataDir,
+				});
+				const promptSpy = vi.spyOn(result.agent, "prompt").mockResolvedValue(undefined);
+				await result.enqueuePrompt("heartbeat job");
+				expect(promptSpy).toHaveBeenCalledWith("heartbeat job");
+			});
+
+			it("should serialize prompt calls to avoid overlap", async () => {
+				const result = createGameAgent({
+					adapter,
+					dataDir,
+				});
+
+				let resolveFirst: (() => void) | null = null;
+				const promptSpy = vi
+					.spyOn(result.agent, "prompt")
+					.mockImplementationOnce(
+						() =>
+							new Promise<void>((resolve) => {
+								resolveFirst = resolve;
+							}),
+					)
+					.mockResolvedValueOnce(undefined);
+
+				const p1 = result.enqueuePrompt("first");
+				const p2 = result.enqueuePrompt("second");
+
+				await Promise.resolve();
+				expect(promptSpy).toHaveBeenCalledTimes(1);
+				resolveFirst!();
+				await p1;
+				await p2;
+				expect(promptSpy).toHaveBeenCalledTimes(2);
+				expect(promptSpy.mock.calls[1][0]).toBe("second");
+			});
+		});
+
 		it("should accept a custom tick interval", () => {
 			const result = createGameAgent({
 				adapter,
@@ -292,6 +338,53 @@ describe("Game Agent Factory", () => {
 			});
 
 			expect(result.ticker).toBeDefined();
+		});
+	});
+
+	describe("runtime config tools", () => {
+		it("should expose config tools when runtimeConfigManager is provided", () => {
+			const manager: RuntimeConfigManager = {
+				getConfig: () => ({ tickIntervalMs: 1000 }),
+				applyChanges: async () => ({
+					ok: true,
+					results: [],
+					currentConfig: { tickIntervalMs: 1000 },
+				}),
+			};
+
+			const result = createGameAgent({
+				adapter,
+				dataDir,
+				runtimeConfigManager: manager,
+			});
+
+			expect(result.tools.map((tool) => tool.name)).toEqual(
+				expect.arrayContaining(["get_agent_config", "set_agent_config"]),
+			);
+		});
+	});
+
+	describe("data dir mutation", () => {
+		it("should allow changing dataDir and keep read/write scoped to the new directory", async () => {
+			const nextDataDir = makeTempDir();
+			try {
+				writeFileSync(join(nextDataDir, "soul.md"), "Updated soul content.");
+				const result = createGameAgent({
+					adapter,
+					dataDir,
+				});
+
+				result.setDataDir(nextDataDir);
+				expect(result.getDataDir()).toBe(nextDataDir);
+				expect(result.agent.state.systemPrompt).toContain("Updated soul content.");
+
+				const writeTool = result.agent.state.tools.find((tool) => tool.name === "write");
+				expect(writeTool).toBeDefined();
+				await writeTool!.execute("write-1", { path: "tasks/probe.md", content: "# Probe" });
+				expect(readFileSync(join(nextDataDir, "tasks", "probe.md"), "utf8")).toBe("# Probe");
+			} finally {
+				rmSync(nextDataDir, { recursive: true, force: true });
+			}
 		});
 	});
 });

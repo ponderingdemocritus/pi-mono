@@ -3,6 +3,8 @@ import type { WorldState } from "./types.js";
 export interface TickLoop {
 	start(): void;
 	stop(): void;
+	setIntervalMs(intervalMs: number): void;
+	readonly intervalMs: number;
 	readonly isRunning: boolean;
 	readonly tickCount: number;
 }
@@ -12,13 +14,39 @@ export function createTickLoop(options: {
 	onTick: () => Promise<void>;
 	onError?: (error: Error) => void;
 }): TickLoop {
-	let timer: ReturnType<typeof setInterval> | null = null;
+	let timer: ReturnType<typeof setTimeout> | null = null;
 	let running = false;
-	let ticking = false; // mutex
+	let ticking = false;
 	let count = 0;
+	let currentIntervalMs = validateInterval(options.intervalMs);
+
+	function validateInterval(intervalMs: number): number {
+		if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+			throw new Error(`intervalMs must be > 0, got ${intervalMs}`);
+		}
+		return Math.floor(intervalMs);
+	}
+
+	function clearTimer() {
+		if (timer) {
+			clearTimeout(timer);
+			timer = null;
+		}
+	}
+
+	function scheduleNextTick() {
+		if (!running) {
+			return;
+		}
+		clearTimer();
+		timer = setTimeout(() => {
+			timer = null;
+			void tick();
+		}, currentIntervalMs);
+	}
 
 	async function tick() {
-		if (ticking) return; // skip if previous tick still running
+		if (ticking) return;
 		ticking = true;
 		try {
 			await options.onTick();
@@ -27,6 +55,7 @@ export function createTickLoop(options: {
 			options.onError?.(err instanceof Error ? err : new Error(String(err)));
 		} finally {
 			ticking = false;
+			scheduleNextTick();
 		}
 	}
 
@@ -34,15 +63,20 @@ export function createTickLoop(options: {
 		start() {
 			if (running) return;
 			running = true;
-			tick(); // immediate first tick
-			timer = setInterval(tick, options.intervalMs);
+			void tick();
 		},
 		stop() {
-			if (timer) {
-				clearInterval(timer);
-				timer = null;
-			}
+			clearTimer();
 			running = false;
+		},
+		setIntervalMs(intervalMs: number) {
+			currentIntervalMs = validateInterval(intervalMs);
+			if (running) {
+				scheduleNextTick();
+			}
+		},
+		get intervalMs() {
+			return currentIntervalMs;
 		},
 		get isRunning() {
 			return running;
@@ -75,5 +109,7 @@ Review your soul, task lists, and priorities. Then:
 3. Decide on your action(s) for this tick
 4. Use \`execute_action\` to submit your chosen action(s)
 5. Use \`write\` to update your task files, priorities, reflection, or soul as needed
-6. Explain your reasoning briefly`;
+6. Use \`set_agent_config\` when you need to tune yourself (model, loop timing, world connectivity)
+7. Maintain \`HEARTBEAT.md\` for cron-style recurring jobs you want to run outside the main tick
+8. Explain your reasoning briefly`;
 }

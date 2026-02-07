@@ -60,3 +60,25 @@ export interface GameAgentConfig<TState extends WorldState = WorldState> {
 	model?: Model<any>;
 	tickIntervalMs?: number;
 }
+
+export interface RuntimeConfigChange {
+	path: string;
+	value: unknown;
+}
+
+export interface RuntimeConfigUpdateResult {
+	path: string;
+	applied: boolean;
+	message: string;
+}
+
+export interface RuntimeConfigApplyResult {
+	ok: boolean;
+	results: RuntimeConfigUpdateResult[];
+	currentConfig: Record<string, unknown>;
+}
+
+export interface RuntimeConfigManager {
+	getConfig(): Record<string, unknown>;
+	applyChanges(changes: RuntimeConfigChange[], reason?: string): Promise<RuntimeConfigApplyResult>;
+}
