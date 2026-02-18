@@ -212,7 +212,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	private filterModels(query: string): void {
 		this.filteredModels = query
-			? fuzzyFilter(this.activeModels, query, ({ id, provider }) => `${id} ${provider}`)
+			? fuzzyFilter(this.activeModels, query, ({ id, provider }) => `${provider}/${id} ${id} ${provider}`)
 			: this.activeModels;
 		this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
 		this.updateList();
