@@ -14,7 +14,7 @@ describe("x402 env", () => {
 		expect(config.network).toBe("eip155:8453");
 		expect(config.permitCap).toBe("10000000");
 		expect(config.paymentHeader).toBe("PAYMENT-SIGNATURE");
-		expect(config.modelId).toBe("x402/gpt-4.1-mini");
+		expect(config.modelId).toBe("gpt-4.1-mini");
 		expect(config.modelName).toBe("x402 GPT-4.1 Mini");
 	});
 
@@ -45,5 +45,14 @@ describe("x402 env", () => {
 				X402_PERMIT_CAP: "-1",
 			}),
 		).toThrow("X402_PERMIT_CAP must be a positive integer string");
+	});
+
+	test("strips x402 prefix from model id", () => {
+		const config = loadX402Env({
+			X402_PRIVATE_KEY: VALID_PRIVATE_KEY,
+			X402_MODEL_ID: "x402/kimi-k2.5",
+		});
+
+		expect(config.modelId).toBe("kimi-k2.5");
 	});
 });

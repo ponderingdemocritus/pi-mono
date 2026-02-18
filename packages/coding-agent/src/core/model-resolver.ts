@@ -368,6 +368,18 @@ export interface InitialModelResult {
 	fallbackMessage: string | undefined;
 }
 
+function normalizeCliModelId(cliProvider: string, cliModel: string): string {
+	const normalizedProvider = cliProvider.toLowerCase();
+	const normalizedModel = cliModel.toLowerCase();
+	const providerPrefix = `${normalizedProvider}/`;
+	if (!normalizedModel.startsWith(providerPrefix)) {
+		return cliModel;
+	}
+
+	const stripped = cliModel.slice(cliProvider.length + 1);
+	return stripped.length > 0 ? stripped : cliModel;
+}
+
 /**
  * Find the initial model to use based on priority:
  * 1. CLI args (provider + model)
@@ -402,7 +414,8 @@ export async function findInitialModel(options: {
 
 	// 1. CLI args take priority
 	if (cliProvider && cliModel) {
-		const found = modelRegistry.find(cliProvider, cliModel);
+		const normalizedCliModel = normalizeCliModelId(cliProvider, cliModel);
+		const found = modelRegistry.find(cliProvider, normalizedCliModel);
 		if (!found) {
 			console.error(chalk.red(`Model ${cliProvider}/${cliModel} not found`));
 			process.exit(1);

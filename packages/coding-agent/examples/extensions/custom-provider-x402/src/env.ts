@@ -7,7 +7,7 @@ const DEFAULT_ROUTER_URL = "http://localhost:8080";
 const DEFAULT_NETWORK = "eip155:8453";
 const DEFAULT_PERMIT_CAP = "10000000";
 const DEFAULT_PAYMENT_HEADER = "PAYMENT-SIGNATURE";
-const DEFAULT_MODEL_ID = "x402/gpt-4.1-mini";
+const DEFAULT_MODEL_ID = "gpt-4.1-mini";
 const DEFAULT_MODEL_NAME = "x402 GPT-4.1 Mini";
 
 export type EnvSource = Record<string, string | undefined>;
@@ -43,6 +43,14 @@ function normalizePermitCap(permitCap: string): string {
 	return permitCap;
 }
 
+function normalizeModelId(modelId: string): string {
+	const normalized = modelId.replace(/^x402\//i, "");
+	if (normalized.length === 0) {
+		throw new Error("X402_MODEL_ID must not be empty");
+	}
+	return normalized;
+}
+
 export function loadX402Env(env: EnvSource = process.env): X402EnvConfig {
 	const privateKeyRaw = readTrimmed(env, "X402_PRIVATE_KEY");
 	if (!privateKeyRaw) {
@@ -62,7 +70,7 @@ export function loadX402Env(env: EnvSource = process.env): X402EnvConfig {
 		network,
 		permitCap: normalizePermitCap(permitCapRaw),
 		paymentHeader,
-		modelId,
+		modelId: normalizeModelId(modelId),
 		modelName,
 	};
 }

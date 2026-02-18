@@ -346,4 +346,34 @@ describe("default model selection", () => {
 		expect(result.model?.provider).toBe("vercel-ai-gateway");
 		expect(result.model?.id).toBe("anthropic/claude-opus-4-6");
 	});
+
+	test("findInitialModel accepts provider-prefixed cli model ids", async () => {
+		const openAIModel: Model<"anthropic-messages"> = {
+			id: "gpt-4o",
+			name: "GPT-4o",
+			api: "anthropic-messages",
+			provider: "openai",
+			baseUrl: "https://api.openai.com/v1",
+			reasoning: false,
+			input: ["text", "image"],
+			cost: { input: 5, output: 15, cacheRead: 0.5, cacheWrite: 5 },
+			contextWindow: 128000,
+			maxTokens: 4096,
+		};
+
+		const registry = {
+			find: (provider: string, modelId: string) =>
+				provider === "openai" && modelId === "gpt-4o" ? openAIModel : undefined,
+		} as unknown as Parameters<typeof findInitialModel>[0]["modelRegistry"];
+
+		const result = await findInitialModel({
+			cliProvider: "openai",
+			cliModel: "openai/gpt-4o",
+			scopedModels: [],
+			isContinuing: false,
+			modelRegistry: registry,
+		});
+
+		expect(result.model).toBe(openAIModel);
+	});
 });
